@@ -38,7 +38,9 @@ from zipline.utils.protocol_utils import Enum
 ORDER_STATUS = Enum(
     'OPEN',
     'FILLED',
-    'CANCELLED'
+    'CANCELLED',
+    'HELD',
+    'REJECTED'
 )
 
 
@@ -113,7 +115,7 @@ class Blotter(object):
 
         return order.id
 
-    def cancel(self, order_id):
+    def cancel(self, order_id, rejected=False):
         if order_id not in self.orders:
             return
 
@@ -125,7 +127,7 @@ class Blotter(object):
 
             if cur_order in self.new_orders:
                 self.new_orders.remove(cur_order)
-            cur_order.cancel()
+            cur_order.cancel(rejected=rejected)
             cur_order.dt = self.current_dt
             # we want this order's new status to be relayed out
             # along with newly placed orders.
@@ -213,7 +215,7 @@ class Order(object):
         self.amount = amount
         self.filled = filled
         self.commission = commission
-        self._cancelled = False
+        self._status = ORDER_STATUS.OPEN
         self.stop = stop
         self.limit = limit
         self.stop_reached = False
@@ -226,7 +228,7 @@ class Order(object):
 
     def to_dict(self):
         py = copy(self.__dict__)
-        for field in ['type', 'direction', '_cancelled']:
+        for field in ['type', 'direction']:
             del py[field]
         py['status'] = self.status
         return py
@@ -274,18 +276,26 @@ class Order(object):
 
     @property
     def status(self):
-        if self._cancelled:
-            return ORDER_STATUS.CANCELLED
+        if self._status != ORDER_STATUS.OPEN:
+            return self._status
+        elif not self.open_amount:
+            self._status = ORDER_STATUS.FILLED
 
-        return ORDER_STATUS.FILLED \
-            if not self.open_amount else ORDER_STATUS.OPEN
+        return self._status
 
-    def cancel(self):
-        self._cancelled = True
+    @status.setter
+    def status(self, status):
+        self._status = status
+
+    def cancel(self, rejected=False):
+        if rejected:
+            self.status = ORDER_STATUS.REJECTED
+        else:
+            self.status = ORDER_STATUS.CANCELLED
 
     @property
     def open(self):
-        return self.status == ORDER_STATUS.OPEN
+        return self.status in [ORDER_STATUS.OPEN, ORDER_STATUS.HELD]
 
     @property
     def triggered(self):
