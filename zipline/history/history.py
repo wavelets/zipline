@@ -41,7 +41,7 @@ class Frequency(object):
     SUPPORTED_FREQUENCIES = frozenset({'1d', '1m'})
     MAX_MINUTES = {'m': 1, 'd': 390}
 
-    def __init__(self, freq_str):
+    def __init__(self, freq_str, daily_at_midnight=False):
 
         if freq_str not in self.SUPPORTED_FREQUENCIES:
             raise ValueError(
@@ -56,25 +56,31 @@ class Frequency(object):
         # unit_str - The unit type, e.g. 'd'
         self.num, self.unit_str = parse_freq_str(freq_str)
 
+        self.daily_at_midnight = daily_at_midnight
+
     def next_window_start(self, previous_window_close):
         """
         Get the first minute of the window starting after a window that
         finished on @previous_window_close.
         """
         if self.unit_str == 'd':
-            return self.next_day_window_start(previous_window_close)
+            return self.next_day_window_start(previous_window_close,
+                                              self.daily_at_midnight)
         elif self.unit_str == 'm':
             return self.next_minute_window_start(previous_window_close)
 
     @staticmethod
-    def next_day_window_start(previous_window_close):
+    def next_day_window_start(previous_window_close, daily_at_midnight=False):
         """
         Get the next day window start after @previous_window_close.  This is
         defined as the first market open strictly greater than
         @previous_window_close.
         """
         env = trading.environment
-        next_open, _ = env.next_open_and_close(previous_window_close)
+        if daily_at_midnight:
+            next_open = env.next_trading_day(previous_window_close)
+        else:
+            next_open, _ = env.next_open_and_close(previous_window_close)
         return next_open
 
     @staticmethod
@@ -229,11 +235,12 @@ class HistorySpec(object):
         return "{0}:{1}:{2}:{3}".format(
             bar_count, freq_str, field, ffill)
 
-    def __init__(self, bar_count, frequency, field, ffill):
+    def __init__(self, bar_count, frequency, field, ffill,
+                 daily_at_midnight=True):
         # Number of bars to look back.
         self.bar_count = bar_count
         if isinstance(frequency, str):
-            frequency = Frequency(frequency)
+            frequency = Frequency(frequency, daily_at_midnight)
         # The frequency at which the data is sampled.
         self.frequency = frequency
         # The field, e.g. 'price', 'volume', etc.
