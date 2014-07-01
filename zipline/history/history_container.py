@@ -23,7 +23,6 @@ from . history import (
     index_at_dt,
 )
 
-from zipline.finance import trading
 from zipline.utils.data import RollingPanel
 
 
